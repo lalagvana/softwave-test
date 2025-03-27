@@ -18,15 +18,37 @@ jobs:
       uses: actions/setup-dotnet@v3
       with:
         dotnet-version: '7.0.x'
+    
+    - name: Find solution file
+      id: find-sln
+      run: |
+        echo "Looking for .NET solution files..."
+        find . -name "*.sln" -type f | tee found-solutions.txt
+        if [ -s found-solutions.txt ]; then
+          SOLUTION_PATH=$(head -n 1 found-solutions.txt)
+          echo "Found solution: $SOLUTION_PATH"
+          echo "solution_path=$SOLUTION_PATH" >> $GITHUB_OUTPUT
+        else
+          echo "No solution file found, looking for project files..."
+          find . -name "*.csproj" -type f | tee found-projects.txt
+          if [ -s found-projects.txt ]; then
+            PROJECT_PATH=$(head -n 1 found-projects.txt)
+            echo "Found project: $PROJECT_PATH"
+            echo "solution_path=$PROJECT_PATH" >> $GITHUB_OUTPUT
+          else
+            echo "No .NET project files found!"
+            exit 1
+          fi
+        fi
         
     - name: Restore dependencies
-      run: dotnet restore
+      run: dotnet restore ${{ steps.find-sln.outputs.solution_path }}
       
     - name: Build
-      run: dotnet build --configuration Release --no-restore
+      run: dotnet build ${{ steps.find-sln.outputs.solution_path }} --configuration Release --no-restore
       
     - name: Test
-      run: dotnet test --configuration Release --no-build --verbosity normal
+      run: dotnet test ${{ steps.find-sln.outputs.solution_path }} --configuration Release --no-build --verbosity normal
     
   build-frontend:
     name: Build & Test React Frontend
@@ -40,14 +62,27 @@ jobs:
       with:
         node-version: '18.x'
     
+    - name: Find frontend directory
+      id: find-frontend
+      run: |
+        if [ -d "./frontend" ]; then
+          echo "frontend_dir=./frontend" >> $GITHUB_OUTPUT
+        elif [ -d "./client" ]; then
+          echo "frontend_dir=./client" >> $GITHUB_OUTPUT
+        elif [ -d "./ClientApp" ]; then
+          echo "frontend_dir=./ClientApp" >> $GITHUB_OUTPUT
+        else
+          echo "frontend_dir=." >> $GITHUB_OUTPUT
+        fi
+    
     - name: Install dependencies
-      working-directory: ./frontend
+      working-directory: ${{ steps.find-frontend.outputs.frontend_dir }}
       run: npm ci || npm install
       
     - name: Build
-      working-directory: ./frontend
+      working-directory: ${{ steps.find-frontend.outputs.frontend_dir }}
       run: npm run build || echo "Build step skipped"
       
     - name: Test
-      working-directory: ./frontend
+      working-directory: ${{ steps.find-frontend.outputs.frontend_dir }}
       run: npm test -- --passWithNoTests || echo "Tests skipped"
