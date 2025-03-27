@@ -1,0 +1,109 @@
+name: CI/CD Pipeline
+
+on:
+  push:
+    branches: [ main, master, develop ]
+  pull_request:
+    branches: [ main, master, develop ]
+
+jobs:
+  build-backend:
+    name: Build & Test .NET Backend
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v3
+    
+    - name: Setup .NET
+      uses: actions/setup-dotnet@v3
+      with:
+        dotnet-version: '7.0.x'
+        
+    - name: Restore dependencies
+      run: dotnet restore
+      
+    - name: Build
+      run: dotnet build --configuration Release --no-restore
+      
+    - name: Test
+      run: dotnet test --configuration Release --no-build --verbosity normal --collect:"XPlat Code Coverage"
+      
+    - name: Upload backend build artifacts
+      uses: actions/upload-artifact@v3
+      with:
+        name: backend-build
+        path: |
+          **/bin/Release/net7.0/
+          !**/bin/Release/net7.0/ref/
+    
+  build-frontend:
+    name: Build & Test React Frontend
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v3
+    
+    - name: Setup Node.js
+      uses: actions/setup-node@v3
+      with:
+        node-version: '18.x'
+        cache: 'npm'
+        cache-dependency-path: './frontend/package-lock.json'
+    
+    - name: Install dependencies
+      working-directory: ./frontend
+      run: npm ci
+      
+    - name: Lint
+      working-directory: ./frontend
+      run: npm run lint || echo "Linting issues found"
+      
+    - name: Build
+      working-directory: ./frontend
+      run: npm run build
+      
+    - name: Test
+      working-directory: ./frontend
+      run: npm test -- --passWithNoTests
+      
+    - name: Upload frontend build artifacts
+      uses: actions/upload-artifact@v3
+      with:
+        name: frontend-build
+        path: frontend/build/
+
+  deploy:
+    name: Deploy Application
+    needs: [build-backend, build-frontend]
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master')
+    
+    steps:
+    - uses: actions/checkout@v3
+    
+    - name: Download backend artifacts
+      uses: actions/download-artifact@v3
+      with:
+        name: backend-build
+        path: backend-artifacts
+    
+    - name: Download frontend artifacts
+      uses: actions/download-artifact@v3
+      with:
+        name: frontend-build
+        path: frontend-artifacts
+    
+    # Add your deployment steps here
+    # For example:
+    # - name: Deploy to Azure
+    #   uses: azure/webapps-deploy@v2
+    #   with:
+    #     app-name: your-app-name
+    #     publish-profile: ${{ secrets.AZURE_WEBAPP_PUBLISH_PROFILE }}
+    #     package: .
+    
+    - name: Deployment placeholder
+      run: |
+        echo "Deployment would happen here"
+        echo "Backend artifacts in ./backend-artifacts"
+        echo "Frontend artifacts in ./frontend-artifacts"
